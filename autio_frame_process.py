@@ -28,13 +28,13 @@ class WakeOrRecognition:
         self._motion_end = False
 
         # 运动检测参数
-        self.continuous_threshold = 0
+        self.continuous_threshold = 4
         self.motion_start_index = -1
         self.motion_start_index_constant = -1  # 为了截取运动片段
         self.motion_stop_index = -1
         self.lower_than_threshold_count = 0  # 超过3次即运动停止
         self.higher_than_threshold_count = 0  # 超过3次即运动开始
-        self.pre_frame = 2
+        self.pre_frame = 4
 
         self._gesture_frame_len = 0
 
@@ -91,7 +91,7 @@ class WakeOrRecognition:
         else:
             if std > STD_THRESHOLD:
                 self.higher_than_threshold_count += 1
-                if self.lower_than_threshold_count >= self.continuous_threshold:
+                if self.higher_than_threshold_count >= self.continuous_threshold:
                     # 运动开始，在前4CHUNK阈值已经超过，另外加上pre_frame*CHUNK的提前量
                     self._gesture_frame_len = (self.continuous_threshold + self.pre_frame) * CHUNK
                     self._motion_start = True
@@ -114,8 +114,13 @@ class WakeOrRecognition:
             # denoise,暂时不用
 
             unwrapped_phase = get_phase(I, Q)  # 这里的展开目前没什么效果
-            # plt.plot(unwrapped_phase[0])
-            # plt.show()
+            # import matplotlib.pyplot as plt
+            # if i == 0:
+            #     plt.figure()
+            #     for j in range(7):
+            #         plt.subplot(4, 2, j + 1)
+            #         plt.plot(unwrapped_phase[j])
+            #     plt.show()
             unwrapped_phase_diff = np.diff(unwrapped_phase)
             # pad是不是可以放到后面做
             unwrapped_phase_diff_padded = padding_or_clip(unwrapped_phase_diff, PADDING_LEN)
@@ -159,9 +164,10 @@ class WakeOrRecognition:
                 self._motion_end = self._motion_detection(frame_segments[0].reshape(1, -1))
                 if self._motion_end:
                     gesture_frames = self._processed_frames[:N_CHANNELS, -self._gesture_frame_len:]
-                    if self._waken:
-                        # 已经唤醒
-                        self._gesture_action_multithread(gesture_frames, self.gesture_recognition)
-                    else:
-                        # 没有唤醒
-                        self._gesture_action_multithread(gesture_frames, self.gesture_wake)
+                    self._gesture_action_multithread(gesture_frames, self.gesture_recognition)
+                    # if self._waken:
+                    #     # 已经唤醒
+                    #     self._gesture_action_multithread(gesture_frames, self.gesture_recognition)
+                    # else:
+                    #     # 没有唤醒
+                    #     self._gesture_action_multithread(gesture_frames, self.gesture_wake)
