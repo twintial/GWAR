@@ -80,6 +80,6 @@ def test():
 
 
 if __name__ == '__main__':
-    # 没用归一化
+    # 没用归一化, 没用cuda加速，padding能优化，多取前后两个CHUNK能优化
     # main()
     test()
