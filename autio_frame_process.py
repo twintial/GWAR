@@ -4,6 +4,7 @@ from config import *
 import log
 import queue
 import numpy as np
+import socket
 
 from audio_util import butter_bandpass_filter, get_cos_IQ_raw_offset, butter_lowpass_filter, get_phase, get_cos_IQ_raw, \
     move_average_overlap_filter, padding_or_clip
@@ -11,6 +12,13 @@ from audio_util import butter_bandpass_filter, get_cos_IQ_raw_offset, butter_low
 
 def get_pair(wake_gesture_data, input_gesture):
     pass
+
+# test
+def socket_client(buffer):
+    address = ('127.0.0.1', 31500)
+    tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcp_socket.connect(address)
+    tcp_socket.send(buffer)
 
 
 class WakeOrRecognition:
@@ -164,6 +172,7 @@ class WakeOrRecognition:
                 self._motion_end = self._motion_detection(frame_segments[0].reshape(1, -1))
                 if self._motion_end:
                     gesture_frames = self._processed_frames[:N_CHANNELS, -self._gesture_frame_len:]
+                    # 测试socket
                     self._gesture_action_multithread(gesture_frames, self.gesture_recognition)
                     # if self._waken:
                     #     # 已经唤醒
