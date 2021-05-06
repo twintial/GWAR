@@ -13,11 +13,15 @@ from audio_util import butter_bandpass_filter, get_cos_IQ_raw_offset, butter_low
 def get_pair(wake_gesture_data, input_gesture):
     pass
 
+
 # test
-def socket_client(buffer):
+def socket_client(phase_diff):
     address = ('127.0.0.1', 31500)
     tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     tcp_socket.connect(address)
+    tcp_socket.setblocking(False)
+    buffer = b''.join(phase_diff)
+    print(len(buffer))
     tcp_socket.send(buffer)
 
 
@@ -122,6 +126,7 @@ class WakeOrRecognition:
             # denoise,暂时不用
 
             unwrapped_phase = get_phase(I, Q)  # 这里的展开目前没什么效果
+            unwrapped_phase = unwrapped_phase.astype(dtype=np.float32)
             # import matplotlib.pyplot as plt
             # if i == 0:
             #     plt.figure()
@@ -136,6 +141,8 @@ class WakeOrRecognition:
 
         with ThreadPoolExecutor(max_workers=8) as pool:
             pool.map(get_phase_and_diff, [i for i in range(NUM_OF_FREQ)])
+        # for i in range(NUM_OF_FREQ):
+        #     get_phase_and_diff(i)
         merged_unwrapped_phase = np.array(unwrapped_phase_list).reshape(data_shape)
         action(merged_unwrapped_phase)
 
@@ -173,7 +180,7 @@ class WakeOrRecognition:
                 if self._motion_end:
                     gesture_frames = self._processed_frames[:N_CHANNELS, -self._gesture_frame_len:]
                     # 测试socket
-                    self._gesture_action_multithread(gesture_frames, self.gesture_recognition)
+                    self._gesture_action_multithread(gesture_frames, socket_client)
                     # if self._waken:
                     #     # 已经唤醒
                     #     self._gesture_action_multithread(gesture_frames, self.gesture_recognition)

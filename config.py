@@ -10,6 +10,6 @@ RECEIVE_CHANNELS = 8  # 可以改进，等测试，直接用7channel
 
 STD_THRESHOLD = 0.015  # 运动阈值
 
-PADDING_LEN = 777
+PADDING_LEN = 1400
 
 data_shape = (NUM_OF_FREQ * N_CHANNELS, PADDING_LEN)
