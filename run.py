@@ -77,7 +77,7 @@ def test():
     au_model = au_model_cons()
     au_model.load_weights(au_model_file)
     # 加载认证用数据
-    waken_gesture_data = get_waken_gesture_data(r'waken_gesture_data')
+    waken_gesture_data = get_waken_gesture_data(r'waken_gesture_data/1')
 
     wr = WakeOrRecognition(audio_queue, reco_model, au_model, waken_gesture_data)
     wr.run()

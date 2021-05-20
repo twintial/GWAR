@@ -23,7 +23,10 @@ def get_waken_gesture_data(npz_path):
 
 
 def get_pair(wake_gesture_data, input_gesture):
-    pass
+    pairs = []
+    for wake_gesture in wake_gesture_data:
+        pairs.append([wake_gesture, input_gesture])
+    return np.array(pairs)
 
 
 # test
@@ -166,7 +169,9 @@ class WakeOrRecognition:
         action(unwrapped_phase_diff_list, magnitude_diff_list)
 
     def gesture_recognition(self, phase_diff_data, magn_diff_data):
-        y_predict = self.reco_model.predict((phase_diff_data, magn_diff_data))
+        phase_diff_data = phase_diff_data[np.newaxis, ..., np.newaxis]
+        magn_diff_data = magn_diff_data[np.newaxis, ..., np.newaxis]
+        y_predict = self.reco_model.predict([phase_diff_data, magn_diff_data])
         label = [
             '抓住-松开', '顺时针画圈', '逆时针画圈', '前推-后拉', '后拉-前推',
             '单击', '双击', '左-右滑动', '右-左滑动', '下-上滑动']
