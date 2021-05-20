@@ -1,4 +1,5 @@
 from concurrent.futures.thread import ThreadPoolExecutor
+import os
 
 from config import *
 import log
@@ -7,7 +8,18 @@ import numpy as np
 import socket
 
 from audio_util import butter_bandpass_filter, get_cos_IQ_raw_offset, butter_lowpass_filter, get_phase, get_cos_IQ_raw, \
-    move_average_overlap_filter, padding_or_clip
+    move_average_overlap_filter, padding_or_clip, get_magnitude
+
+
+def get_waken_gesture_data(npz_path):
+    waken_gesture_data = []
+    file_names = os.listdir(npz_path)
+    for file_name in file_names:
+        abs_path = os.path.join(npz_path, file_name)
+        data = np.load(abs_path)
+        phase_diff: np.ndarray = data['phase_diff']
+        waken_gesture_data.append(phase_diff[..., np.newaxis])
+    return waken_gesture_data
 
 
 def get_pair(wake_gesture_data, input_gesture):
@@ -26,11 +38,11 @@ def socket_client(phase_diff):
 
 
 class WakeOrRecognition:
-    def __init__(self, audio_queue: queue.Queue, reco_model, wake_model, wake_gesture_data):
+    def __init__(self, audio_queue: queue.Queue, reco_model, wake_model, wake_gesture_data_path):
         self._audio_queue = audio_queue
         self.reco_model = reco_model
         self.wake_model = wake_model
-        self.wake_gesture_data = wake_gesture_data
+        self.wake_gesture_data = wake_gesture_data_path
 
         self._processed_frames = None
 
@@ -114,7 +126,8 @@ class WakeOrRecognition:
 
     # wake和gesture共用
     def _gesture_action_multithread(self, gesture_frames, action: callable):
-        unwrapped_phase_list = [None] * NUM_OF_FREQ
+        unwrapped_phase_diff_list = [None] * NUM_OF_FREQ
+        magnitude_diff_list = [None] * NUM_OF_FREQ
 
         def get_phase_and_diff(i):
             fc = F0 + i * STEP
@@ -137,23 +150,32 @@ class WakeOrRecognition:
             unwrapped_phase_diff = np.diff(unwrapped_phase)
             # pad是不是可以放到后面做
             unwrapped_phase_diff_padded = padding_or_clip(unwrapped_phase_diff, PADDING_LEN)
-            unwrapped_phase_list[i] = unwrapped_phase_diff_padded
+            unwrapped_phase_diff_list[i] = unwrapped_phase_diff_padded
+
+            magnitude = get_magnitude(I, Q)
+            magnitude_diff = np.diff(magnitude)
+            magnitude_diff_padded = padding_or_clip(magnitude_diff, PADDING_LEN)
+            magnitude_diff_list[i] = magnitude_diff_padded
 
         with ThreadPoolExecutor(max_workers=8) as pool:
             pool.map(get_phase_and_diff, [i for i in range(NUM_OF_FREQ)])
         # for i in range(NUM_OF_FREQ):
         #     get_phase_and_diff(i)
-        merged_unwrapped_phase = np.array(unwrapped_phase_list).reshape(data_shape)
-        action(merged_unwrapped_phase)
+        unwrapped_phase_diff_list = np.array(unwrapped_phase_diff_list).reshape(data_shape)
+        magnitude_diff_list = np.array(magnitude_diff_list).reshape(data_shape)
+        action(unwrapped_phase_diff_list, magnitude_diff_list)
 
-    def gesture_recognition(self, phase_data):
-        y_predict = self.reco_model.predict(phase_data.reshape((1, phase_data.shape[0], phase_data.shape[1], 1)))
-        label = ['握紧', '张开', '左滑', '右滑', '上滑', '下滑', '前推', '后推', '顺时针转圈', '逆时针转圈']
+    def gesture_recognition(self, phase_diff_data, magn_diff_data):
+        y_predict = self.reco_model.predict((phase_diff_data, magn_diff_data))
+        label = [
+            '抓住-松开', '顺时针画圈', '逆时针画圈', '前推-后拉', '后拉-前推',
+            '单击', '双击', '左-右滑动', '右-左滑动', '下-上滑动']
         print(np.argmax(y_predict[0]))
         print(label[np.argmax(y_predict[0])])
+        # socket
 
-    def gesture_wake(self, phase_data):
-        input_gesture = phase_data.reshape((phase_data.shape[0], phase_data.shape[1], 1))
+    def gesture_wake(self, phase_diff_data, magn_diff_data):
+        input_gesture = phase_diff_data[..., np.newaxis]
         input_pairs = get_pair(self.wake_gesture_data, input_gesture)
         y_predict = self.wake_model.predict([input_pairs[:, 0], input_pairs[:, 1]])
 
@@ -165,6 +187,7 @@ class WakeOrRecognition:
             self._waken = True
         else:
             print("not wake gesture")
+        # socket
 
     def run(self):
         # 直接在主线程中运行
@@ -180,10 +203,10 @@ class WakeOrRecognition:
                 if self._motion_end:
                     gesture_frames = self._processed_frames[:N_CHANNELS, -self._gesture_frame_len:]
                     # 测试socket
-                    self._gesture_action_multithread(gesture_frames, socket_client)
-                    # if self._waken:
-                    #     # 已经唤醒
-                    #     self._gesture_action_multithread(gesture_frames, self.gesture_recognition)
-                    # else:
-                    #     # 没有唤醒
-                    #     self._gesture_action_multithread(gesture_frames, self.gesture_wake)
+                    # self._gesture_action_multithread(gesture_frames, socket_client)
+                    if self._waken:
+                        # 已经唤醒
+                        self._gesture_action_multithread(gesture_frames, self.gesture_recognition)
+                    else:
+                        # 没有唤醒
+                        self._gesture_action_multithread(gesture_frames, self.gesture_wake)

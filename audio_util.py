@@ -49,6 +49,13 @@ def get_phase(I: np.ndarray, Q: np.ndarray) -> np.ndarray:
     return unwrap_angle
 
 
+def get_magnitude(I: np.ndarray, Q: np.ndarray) -> np.ndarray:
+    signal = I + 1j * Q
+    magn = np.abs(signal)
+    magn = 10 * np.log10(magn)
+    return magn
+
+
 def padding_or_clip(array: np.ndarray, target_len):
     array_len = array.shape[1]
     delta_len = array_len - target_len

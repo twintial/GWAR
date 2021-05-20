@@ -1,11 +1,13 @@
-from autio_frame_process import WakeOrRecognition
+from autio_frame_process import WakeOrRecognition, get_waken_gesture_data
 import queue
 import numpy as np
 import wave
 from config import *
 import threading
 import log
+from tensorflow.keras import models
 
+from models import reco_model_cons, au_model_cons
 from record_tool import PlayRecorder
 
 audio_queue = queue.Queue(maxsize=10)
@@ -44,14 +46,6 @@ def load_audio_data(filename, type='pcm'):
         return wave_data, framerate
 
 
-def main():
-    signal = ''
-    # play_recorder = PlayRecorder()
-    # play_recorder.play_and_record(signal)
-    # wr = WakeOrRecognition(audio_queue)
-    # wr.run()
-
-
 def test():
     def put_data():
         origin_data, fs = load_audio_data(r'D:\projects\pyprojects\gestrecodemo\realtimesys\test.wav', 'wav')
@@ -71,12 +65,31 @@ def test():
     put_thread = threading.Thread(target=put_data)
     put_thread.start()
 
-    from tensorflow.keras import models
-    model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_234_5.h5'
-    model: models.Sequential = models.load_model(model_file)
-    wr = WakeOrRecognition(audio_queue, model, None, None)
+    # 识别模型加载
+    reco_model_file = r'models/fusion.h5'
+    phase_input_shape = (NUM_OF_FREQ * N_CHANNELS, PADDING_LEN, 1)
+    magn_input_shape = (NUM_OF_FREQ * N_CHANNELS, PADDING_LEN, 1)
+    n_classes = 10
+    reco_model = reco_model_cons(n_classes, phase_input_shape, magn_input_shape)
+    reco_model.load_weights(reco_model_file)
+    # 认证模型加载
+    au_model_file = r'models/t1.h5'
+    au_model = au_model_cons()
+    au_model.load_weights(au_model_file)
+    # 加载认证用数据
+    waken_gesture_data = get_waken_gesture_data(r'waken_gesture_data')
+
+    wr = WakeOrRecognition(audio_queue, reco_model, au_model, waken_gesture_data)
     wr.run()
     put_thread.join()
+
+
+def main():
+    signal = ''
+    # play_recorder = PlayRecorder()
+    # play_recorder.play_and_record(signal)
+    # wr = WakeOrRecognition(audio_queue)
+    # wr.run()
 
 
 if __name__ == '__main__':
