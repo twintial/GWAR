@@ -1,4 +1,6 @@
+import threading
 from concurrent.futures.thread import ThreadPoolExecutor
+from threading import Lock
 import os
 
 from config import *
@@ -31,7 +33,7 @@ def get_pair(wake_gesture_data, input_gesture):
 
 # test
 def socket_client(phase_diff):
-    address = ('127.0.0.1', 31500)
+    address = ('127.0.0.push', 31500)
     tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     tcp_socket.connect(address)
     tcp_socket.setblocking(False)
@@ -40,8 +42,23 @@ def socket_client(phase_diff):
     tcp_socket.send(buffer)
 
 
+def socket_send(ip, port, buffer):
+    address = (ip, port)
+    tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcp_socket.connect(address)
+    tcp_socket.setblocking(False)
+    tcp_socket.send(buffer)
+
+
 class WakeOrRecognition:
     def __init__(self, audio_queue: queue.Queue, reco_model, wake_model, wake_gesture_data_path):
+        self.lock = Lock()
+        self.recording_gesture = 0
+        self.new_gesture_raw_data = []
+
+        put_thread = threading.Thread(target=self._set_socket_conn)
+        put_thread.start()
+
         self._audio_queue = audio_queue
         self.reco_model = reco_model
         self.wake_model = wake_model
@@ -69,6 +86,36 @@ class WakeOrRecognition:
 
         self._max_frame_count_in_memory = FS * 2  # 2s
 
+    def _revise_recording_gesture(self, v):
+        self.lock.acquire()
+        self.recording_gesture = v
+        self.lock.release()
+
+    def _set_socket_conn(self):
+        address = ('127.0.0.1', 31503)
+        tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        tcp_socket.bind(address)
+        tcp_socket.listen(1)
+        while True:
+            connection, ad = tcp_socket.accept()
+            print(f'got connected from {ad}')
+            buffer = connection.recv(10)
+            code = int(str(buffer, "utf-8"))
+            print(code)
+            if code == 0:
+                pass  # nothing
+            elif code == 1:
+                # record
+                self.new_gesture_raw_data.clear()
+            elif code == 2:
+                # start
+                self.new_gesture_raw_data.clear()
+            elif code == 3:
+                pass  # stop convert
+            elif code == 4:
+                pass  # finish save
+            self._revise_recording_gesture(code)
+
     def _get_next_frame(self):
         try:
             return self._audio_queue.get(block=True, timeout=10)
@@ -82,6 +129,11 @@ class WakeOrRecognition:
         # 能不能改进
         self._processed_frames = frame_data if self._processed_frames is None \
             else np.hstack((self._processed_frames, frame_data))
+
+    def _recording_frame_process(self, frame_data):
+        frame_data = np.frombuffer(frame_data, dtype=np.int16)
+        frame_data = frame_data.reshape(-1, RECEIVE_CHANNELS).T  # shape=(channels, frame_count)
+        self.new_gesture_raw_data.append(frame_data)
 
     def _frame2phase(self, frame_segment):
         # 只转换第一个频率的phase，是不是可以用I/Q？
@@ -147,7 +199,7 @@ class WakeOrRecognition:
             # if i == 0:
             #     plt.figure()
             #     for j in range(7):
-            #         plt.subplot(4, 2, j + 1)
+            #         plt.subplot(4, 2, j + push)
             #         plt.plot(unwrapped_phase[j])
             #     plt.show()
             unwrapped_phase_diff = np.diff(unwrapped_phase)
@@ -175,9 +227,12 @@ class WakeOrRecognition:
         label = [
             '抓住-松开', '顺时针画圈', '逆时针画圈', '前推-后拉', '后拉-前推',
             '单击', '双击', '左-右滑动', '右-左滑动', '下-上滑动']
-        print(np.argmax(y_predict[0]))
-        print(label[np.argmax(y_predict[0])])
+        label_num = int(np.argmax(y_predict[0]))
+        print(label_num)
+        print(label[label_num])
         # socket
+        socket_send('127.0.0.1', 31500, b''.join(phase_diff_data))
+        socket_send('127.0.0.1', 31502, label_num.to_bytes(8, 'little'))
 
     def gesture_wake(self, phase_diff_data, magn_diff_data):
         input_gesture = phase_diff_data[..., np.newaxis]
@@ -187,31 +242,39 @@ class WakeOrRecognition:
         dist = np.mean(y_predict)
         print(f'相似度：{dist}')
         if dist < 0.5:
-            print("\033[1;31m wake gesture\033[0m")
+            print("\033[push;31m wake gesture\033[0m")
             # 什么时候变成Flase？
             self._waken = True
+            # socket
+            socket_send('127.0.0.1', 31501, b'1')
         else:
             print("not wake gesture")
         # socket
+        socket_send('127.0.0.1', 31500, b''.join(phase_diff_data))
 
     def run(self):
         # 直接在主线程中运行
         while True:
             next_frame = self._get_next_frame()  # 会阻塞
-            self._frame_data_process(next_frame)
-            if self._processed_frames.shape[1] > self._max_frame_count_in_memory:
-                self._processed_frames = self._processed_frames[:, CHUNK:]
-            if self._processed_frames.shape[1] > 3 * CHUNK:
-                # 前后都多拿一个CHUNK
-                frame_segments = self._processed_frames[:, -3 * CHUNK:]
-                self._motion_end = self._motion_detection(frame_segments[0].reshape(1, -1))
-                if self._motion_end:
-                    gesture_frames = self._processed_frames[:N_CHANNELS, -self._gesture_frame_len:]
-                    # 测试socket
-                    # self._gesture_action_multithread(gesture_frames, socket_client)
-                    if self._waken:
-                        # 已经唤醒
-                        self._gesture_action_multithread(gesture_frames, self.gesture_recognition)
-                    else:
-                        # 没有唤醒
-                        self._gesture_action_multithread(gesture_frames, self.gesture_wake)
+            if self.recording_gesture == 0 or self.recording_gesture == 4:
+                self._frame_data_process(next_frame)
+                if self._processed_frames.shape[1] > self._max_frame_count_in_memory:
+                    self._processed_frames = self._processed_frames[:, CHUNK:]
+                if self._processed_frames.shape[1] > 3 * CHUNK:
+                    # 前后都多拿一个CHUNK
+                    frame_segments = self._processed_frames[:, -3 * CHUNK:]
+                    self._motion_end = self._motion_detection(frame_segments[0].reshape(1, -1))
+                    if self._motion_end:
+                        gesture_frames = self._processed_frames[:N_CHANNELS, -self._gesture_frame_len:]
+                        # 测试socket
+                        # self._gesture_action_multithread(gesture_frames, socket_client)
+                        if self._waken:
+                            # 已经唤醒
+                            self._gesture_action_multithread(gesture_frames, self.gesture_recognition)
+                        else:
+                            # 没有唤醒
+                            self._gesture_action_multithread(gesture_frames, self.gesture_wake)
+            elif self.recording_gesture == 1 or self.recording_gesture == 3:
+                print(1)
+            elif self.recording_gesture == 2:
+                self._recording_frame_process(next_frame)

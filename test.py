@@ -27,7 +27,7 @@ if __name__ == '__main__':
     # q = Queue()
     # a = A(q)
     # b = B(q)
-    # a.put(1)
+    # a.put(push)
     # print(b.get())
     # while not q.empty():
     #     print(q.get())
