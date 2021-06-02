@@ -25,17 +25,17 @@ class B:
 
 if __name__ == '__main__':
     # q = Queue()
-    # a = A(q)
+    # sjj = A(q)
     # b = B(q)
-    # a.put(push)
+    # sjj.put(push)
     # print(b.get())
     # while not q.empty():
     #     print(q.get())
     import numpy as np
-    # a = np.array([[1,2,3],[3,4,6]])
-    # print(b''.join(a))
-    # x = np.frombuffer(a, dtype=np.int32)
-    # print(x.reshape(a.shape))
+    # sjj = np.array([[1,2,3],[3,4,6]])
+    # print(b''.join(sjj))
+    # x = np.frombuffer(sjj, dtype=np.int32)
+    # print(x.reshape(sjj.shape))
 
     a = []
     a.append([[1,2],[3,4]])

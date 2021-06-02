@@ -8,6 +8,7 @@ import log
 import queue
 import numpy as np
 import socket
+import tensorflow.keras.backend as K
 
 from audio_util import butter_bandpass_filter, get_cos_IQ_raw_offset, butter_lowpass_filter, get_phase, get_cos_IQ_raw, \
     move_average_overlap_filter, padding_or_clip, get_magnitude, convert_wavfile_to_phase_and_magnitude
@@ -21,7 +22,7 @@ def get_waken_gesture_data(npz_path):
         data = np.load(abs_path)
         phase_diff: np.ndarray = data['phase_diff']
         waken_gesture_data.append(phase_diff[..., np.newaxis])
-    return waken_gesture_data
+    return np.array(waken_gesture_data)
 
 
 def get_pair(wake_gesture_data, input_gesture):
@@ -119,13 +120,14 @@ class WakeOrRecognition:
                 self.ready_save_data.append(np.hstack(self.new_gesture_raw_data))
             elif code == 4:
                 # finish and save
-                os.makedirs('waken_gesture_data/test')
+                os.makedirs('waken_gesture_data/握拳', exist_ok=True)
                 for index, data in enumerate(self.ready_save_data):
                     phase_diff, magn_diff = convert_wavfile_to_phase_and_magnitude(data[:N_CHANNELS])
-                    save_file = f'waken_gesture_data/test/{index}.npz'
+                    save_file = f'waken_gesture_data/握拳/{index}.npz'
                     np.savez_compressed(save_file,
                                         phase_diff=phase_diff,
                                         magn_diff=magn_diff)
+                self.wake_gesture_data = get_waken_gesture_data(r'waken_gesture_data/握拳')
 
 
     def _get_next_frame(self):
@@ -248,13 +250,25 @@ class WakeOrRecognition:
 
     def gesture_wake(self, phase_diff_data, magn_diff_data):
         input_gesture = phase_diff_data[..., np.newaxis]
-        input_pairs = get_pair(self.wake_gesture_data, input_gesture)
-        y_predict = self.wake_model.predict([input_pairs[:, 0], input_pairs[:, 1]])
+        # input_pairs = get_pair(self.wake_gesture_data, input_gesture)
+        # y_predict = self.wake_model.predict([input_pairs[:, 0], input_pairs[:, 1]])
 
-        dist = np.mean(y_predict)
+        def euclidean_distance(vects):
+            x, y = vects
+            sum_square = K.sum(K.square(x - y))
+            return K.sqrt(K.maximum(sum_square, K.epsilon()))
+
+        embeddings = self.wake_model.predict(self.wake_gesture_data)
+        embedding_x = self.wake_model.predict(input_gesture[np.newaxis, ...]).reshape(-1)
+
+        d = []
+        for embedding in embeddings:
+            d.append(euclidean_distance((embedding, embedding_x)))
+
+        dist = np.mean(d)
         print(f'相似度：{dist}')
-        if dist < 0.5:
-            print("\033[push;31m wake gesture\033[0m")
+        if dist < 0.8:
+            print("waken gesture")
             # 什么时候变成Flase？
             self._waken = True
             # socket
