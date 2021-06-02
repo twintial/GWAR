@@ -32,7 +32,14 @@ if __name__ == '__main__':
     # while not q.empty():
     #     print(q.get())
     import numpy as np
-    a = np.array([[1,2,3],[3,4,6]])
-    print(b''.join(a))
-    x = np.frombuffer(a, dtype=np.int32)
-    print(x.reshape(a.shape))
+    # a = np.array([[1,2,3],[3,4,6]])
+    # print(b''.join(a))
+    # x = np.frombuffer(a, dtype=np.int32)
+    # print(x.reshape(a.shape))
+
+    a = []
+    a.append([[1,2],[3,4]])
+    a.append([[5,6],[7,8]])
+    a.append([[5,6],[7,8]])
+    a.append([[5,6],[7,8]])
+    print(np.hstack(a))

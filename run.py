@@ -1,4 +1,4 @@
-from autio_frame_process import WakeOrRecognition, get_waken_gesture_data
+from audio_frame_process import WakeOrRecognition, get_waken_gesture_data
 import queue
 import numpy as np
 import wave

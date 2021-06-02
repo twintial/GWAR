@@ -10,7 +10,7 @@ import numpy as np
 import socket
 
 from audio_util import butter_bandpass_filter, get_cos_IQ_raw_offset, butter_lowpass_filter, get_phase, get_cos_IQ_raw, \
-    move_average_overlap_filter, padding_or_clip, get_magnitude
+    move_average_overlap_filter, padding_or_clip, get_magnitude, convert_wavfile_to_phase_and_magnitude
 
 
 def get_waken_gesture_data(npz_path):
@@ -55,6 +55,8 @@ class WakeOrRecognition:
         self.lock = Lock()
         self.recording_gesture = 0
         self.new_gesture_raw_data = []
+
+        self.ready_save_data = []
 
         put_thread = threading.Thread(target=self._set_socket_conn)
         put_thread.start()
@@ -102,19 +104,29 @@ class WakeOrRecognition:
             buffer = connection.recv(10)
             code = int(str(buffer, "utf-8"))
             print(code)
+            self._revise_recording_gesture(code)
             if code == 0:
                 pass  # nothing
             elif code == 1:
                 # record
                 self.new_gesture_raw_data.clear()
+                self.ready_save_data.clear()
             elif code == 2:
                 # start
                 self.new_gesture_raw_data.clear()
             elif code == 3:
-                pass  # stop convert
+                # stop and convert
+                self.ready_save_data.append(np.hstack(self.new_gesture_raw_data))
             elif code == 4:
-                pass  # finish save
-            self._revise_recording_gesture(code)
+                # finish and save
+                os.makedirs('waken_gesture_data/test')
+                for index, data in enumerate(self.ready_save_data):
+                    phase_diff, magn_diff = convert_wavfile_to_phase_and_magnitude(data[:N_CHANNELS])
+                    save_file = f'waken_gesture_data/test/{index}.npz'
+                    np.savez_compressed(save_file,
+                                        phase_diff=phase_diff,
+                                        magn_diff=magn_diff)
+
 
     def _get_next_frame(self):
         try:
@@ -256,6 +268,8 @@ class WakeOrRecognition:
         # 直接在主线程中运行
         while True:
             next_frame = self._get_next_frame()  # 会阻塞
+            # lock
+            self.lock.acquire()
             if self.recording_gesture == 0 or self.recording_gesture == 4:
                 self._frame_data_process(next_frame)
                 if self._processed_frames.shape[1] > self._max_frame_count_in_memory:
@@ -275,6 +289,8 @@ class WakeOrRecognition:
                             # 没有唤醒
                             self._gesture_action_multithread(gesture_frames, self.gesture_wake)
             elif self.recording_gesture == 1 or self.recording_gesture == 3:
-                print(1)
+                pass
+                # print(1)
             elif self.recording_gesture == 2:
                 self._recording_frame_process(next_frame)
+            self.lock.release()
