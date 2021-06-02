@@ -239,9 +239,9 @@ class WakeOrRecognition:
         label = [
             '抓住-松开', '顺时针画圈', '逆时针画圈', '前推-后拉', '后拉-前推',
             '单击', '双击', '左-右滑动', '右-左滑动', '下-上滑动']
-        label_num = int(np.argmax(y_predict[0]))
+        label_num = int(np.argmax(y_predict[0])) + 1
         print(label_num)
-        print(label[label_num])
+        print(label[label_num - 1])
         # socket
         socket_send('127.0.0.1', 31500, b''.join(phase_diff_data))
         socket_send('127.0.0.1', 31502, label_num.to_bytes(8, 'little'))

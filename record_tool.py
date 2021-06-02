@@ -42,8 +42,8 @@ class PlayRecorder:
             self._audio_queue.put(in_data, block=True, timeout=1)
         except queue.Full:
             log.logger.warning('Audio queue is full because of processing audio frame too slowly')
-        self.t = self.t + frame_count / self.fs
-        print(self.t)
+        # self.t = self.t + frame_count / self.fs
+        # print(self.t)
         return in_data, pyaudio.paContinue
 
     def output_callback(self, in_data, frame_count, time_info, status_flags):
