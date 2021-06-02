@@ -83,16 +83,56 @@ def test():
     wr.run()
     put_thread.join()
 
+def cos_wave(A, f, fs, t, phi=0):
+    '''
+    :params A:    振幅
+    :params f:    信号频率
+    :params fs:   采样频率
+    :params phi:  相位
+    :params t:    时间长度
+    '''
+    # 若时间序列长度为 t=1s,
+    # 采样频率 fs=1000 Hz, 则采样时间间隔 Ts=1/fs=0.001s
+    # 对于时间序列采样点个数为 n=t/Ts=1/0.001=1000, 即有1000个点,每个点间隔为 Ts
+    Ts = 1 / fs
+    n = t / Ts
+    n = np.arange(n)
+    # 默认类型为float32
+    y = A * np.cos(2 * np.pi * f * n * Ts + phi * (np.pi / 180)).astype(np.float32)
+    return y
 
 def main():
-    signal = ''
-    # play_recorder = PlayRecorder()
-    # play_recorder.play_and_record(signal)
+    t = 300
+    A = [1, 1, 1, 1, 1, 1, 1, 1]
+    alpha = 1 / sum(A)
+    y = A[0] * cos_wave(1, 17350, 48e3, t)
+    for i in range(1, 8):
+        y = y + A[i] * cos_wave(1, 17350 + i * 700, 48e3, t)
+    signal = alpha * y
+
+    play_recorder = PlayRecorder(12, 4, 8, audio_queue)
+    play_recorder.play_and_record(signal)
     # wr = WakeOrRecognition(audio_queue)
     # wr.run()
+    # 识别模型加载
+    reco_model_file = r'models/fusion.h5'
+    phase_input_shape = (NUM_OF_FREQ * N_CHANNELS, PADDING_LEN, 1)
+    magn_input_shape = (NUM_OF_FREQ * N_CHANNELS, PADDING_LEN, 1)
+    n_classes = 10
+    reco_model = reco_model_cons(n_classes, phase_input_shape, magn_input_shape)
+    reco_model.load_weights(reco_model_file)
+    # 认证模型加载
+    au_model_file = r'models/t1.h5'
+    au_model = au_model_cons()
+    au_model.load_weights(au_model_file)
+    # 加载认证用数据
+    waken_gesture_data = get_waken_gesture_data(r'waken_gesture_data/push')
+
+    wr = WakeOrRecognition(audio_queue, reco_model, au_model, waken_gesture_data)
+    wr.run()
 
 
 if __name__ == '__main__':
     # 没用归一化, 没用cuda加速，padding能优化，多取前后两个CHUNK能优化
-    # main()
-    test()
+    main()
+    # test()
